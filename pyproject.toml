@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "batch-link-import"
+version = "1.0.0"
+description = "批量导入 GitHub 项目到飞书多维表格归档库。自动提取链接、采集 README 和 Stars、LLM 分析分类打分、写入飞书。"
+requires-python = ">=3.10"
+dependencies = [
+    "requests>=2.28",
+]
+
+[project.scripts]
+batch-link-import = "assets.main:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
