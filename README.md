@@ -119,7 +119,7 @@ Stars 数量: {stars}
 - func_score: 功能评分（1-10）
 ```
 
-完整的 Prompt 模板见 [SKILL.md](SKILL.md) 的阶段三部分。
+完整的 Prompt 模板见 [assets/analyzer.py](assets/analyzer.py) 中的 `ANALYSIS_PROMPT` 常量。
 
 ## Configuration
 
@@ -150,11 +150,44 @@ Stars 数量: {stars}
 | `评估日期` | 日期 | 入库时间 |
 | `状态` | 单选 | 已入库 |
 
+## Scoring
+
+项目评估有三个维度，加起来总分 30：
+
+| 维度 | 分值 | 怎么算的 |
+|------|------|---------|
+| 社区评分 | 1-10 | 根据 GitHub Stars 数量换算，Stars 越多分越高 |
+| 文档评分 | 1-10 | LLM 看 README 写得完不完善来打分 |
+| 功能评分 | 1-10 | LLM 看项目功能完不完整来打分 |
+
+**Stars 和社区评分对照：**
+
+| Stars 数量 | 分数 |
+|-----------|------|
+| 0 - 10 | 1 |
+| 11 - 100 | 2 |
+| 101 - 500 | 3 |
+| 501 - 1000 | 4 |
+| 1001 - 5000 | 5 |
+| 5001 - 10000 | 6 |
+| 10001 - 30000 | 7 |
+| 30001 - 100000 | 8 |
+| 100001+ | 9-10 |
+
+## Design
+
+- **不做多余的事** — 每个阶段只做它该做的事，不乱加功能
+- **不管什么类型都入库** — MCP、Skill、工具、普通项目，通通入库，类型让 LLM 自己判断
+- **本地去重，不查飞书** — 用本地文件记录已入库和待上传的项目，不和飞书比对
+- **一次 LLM 搞定** — 所有分析字段一次 Prompt 输出，不分多次调
+- **不 clone 代码** — 只用 HTTP 请求拿公开数据，不 git clone
+- **没配飞书也能用** — 结果先存本地，配好飞书后自动上传
+
 ## Project Structure
 
 ```
 batch-link-import/
-├── SKILL.md                 # AI Agent 主指令（含完整 Prompt 模板）
+├── SKILL.md                 # AI Agent 执行指令（触发规则 + 流程控制）
 ├── pyproject.toml           # Python 项目配置
 ├── imported.txt             # 已入库项目清单（自动维护，只增不减）
 ├── pending_results.json     # 待上传暂存记录（自动维护，上传即清）
