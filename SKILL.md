@@ -1,6 +1,6 @@
 ---
 name: batch-link-import
-version: 1.0.0
+version: 1.2.0
 description: "批量导入 GitHub 项目到飞书多维表格归档库。自动提取链接、采集 README 和 Stars、LLM 分析分类打分、写入飞书。"
 metadata:
   requires:
@@ -39,9 +39,35 @@ metadata:
 - 未确认用户意图前不要执行全流程
 - 不要克隆仓库，只用 HTTP 请求获取公开数据
 
+## 自动化规则（必须遵守）
+
+以下规则适用于每次执行，无需征求用户同意：
+
+### 规则一：启动时自动检测飞书环境变量
+
+每次执行本 skill 时，**最先做**（在任何阶段之前）的一件事就是自动检测飞书环境变量：
+
+1. 运行 Python 代码检测：`from assets.feishu_writer import is_feishu_configured; print(is_feishu_configured())`
+2. 如果返回 `True`，直接告知用户"飞书环境变量已就绪，可直接入库"，**不要问用户是否已配置**
+3. 如果返回 `False`，告知用户"未检测到飞书环境变量，结果将本地暂存"，并输出配置指引
+
+> 关键：**不要问用户"是否已配置"**，直接自动检测并告知结果。用户新开会话后无需任何提醒，模型会自动检测。
+
+### 规则二：`pending_results.json` 上传后自动清理，无需用户确认
+
+`pending_results.json` 是唯一需要清理的临时文件——它记录待上传的评估结果，每次执行都会变化。
+**清理逻辑已在 `pop_all()` 中内置**（取出记录后删除文件），因此：
+
+- 当 `has_items()` 返回 `True` 时，直接调用 `pop_all()` 取出并删除，**无需询问用户"是否删除临时文件"**
+- `pop_all()` 执行完毕即代表文件已删除，不需要额外操作
+- 其他文件（`imported.txt`、`__pycache__`、`*.pyc` 等）是**持久化缓存或项目文件**，保留不变，不清理
+- 总之：流程中**不会有任何"是否删除"的提问出现**
+
 ---
 
 ## 执行流程
+
+> ⚡ 先执行「规则一：启动时自动检测飞书环境变量」（见上方自动化规则），**完成后再开始阶段一**。
 
 ### 阶段一：链接提取 + 三层去重
 
@@ -144,7 +170,7 @@ if write_record_with_retry(fields):
 
 ---
 
-### 阶段五：输出汇总报告
+### 阶段五：输出汇总报告 + 自动清理
 
 ```python
 from assets.reporter import ReportItem, build_report
@@ -159,6 +185,8 @@ print(report.generate())
 ```
 
 本地暂存的项目状态标记为 `"success"` + `not_uploaded=True`。
+
+**报告输出后，无需任何手动清理操作**（遵循规则二，`pending_results.json` 的上传和删除已由 `pop_all()` 自动完成）。
 
 ---
 
