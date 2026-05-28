@@ -59,7 +59,6 @@ def phase4_feishu_or_local(completed_items: list, failed_items: list) -> dict:
     fw = _import_module("assets.feishu_writer")
     st = _import_module("assets.storage")
     rp = _import_module("assets.reporter")
-    ext = _import_module("assets.extractor")
 
     has_feishu = fw.is_feishu_configured()
     all_items = []
@@ -67,22 +66,16 @@ def phase4_feishu_or_local(completed_items: list, failed_items: list) -> dict:
 
     if not has_feishu:
         print(f"\n\U0001f4e6 阶段四：未检测到飞书配置，本地暂存")
-        pending_items = []
         for url, owner_repo, stars, readme in completed_items:
-            print(f"  \U0001f4e5 本地暂存 [{owner_repo}]")
-            all_items.append(rp.ReportItem(url, owner_repo, "success"))
-        print(f"  \u2705 共 {len(completed_items)} 条结果已准备暂存")
-
-        local_skipped = []
-        for url, owner_repo, _, _ in completed_items:
-            owner, repo = ext.parse_owner_repo(url)
-            local_skipped.append(rp.ReportItem(url, owner_repo, "skipped",
-                                               error_reason="本地暂存（未上传）"))
-
+            print(f"  \U0001f4e5 暂存 [{owner_repo}]")
+            all_items.append(rp.ReportItem(url, owner_repo, "skipped",
+                                           error_reason="本地暂存（未上传）"))
         local_saved = True
-        all_items = local_skipped
     else:
         print(f"\n\U0001f4e5 阶段四：已检测到飞书配置")
+        pending_count = st.count_items()
+        if pending_count > 0:
+            print(f"  \U0001f4e5 检测到 {pending_count} 条本地待上传记录，将一并上传")
         for url, owner_repo, stars, readme in completed_items:
             print(f"  \u2705 可上传 [{owner_repo}]")
             all_items.append(rp.ReportItem(url, owner_repo, "success"))
@@ -100,10 +93,10 @@ def phase5_report(report_data: dict):
     print("\n" + report.generate())
     if report_data["local_saved"]:
         print()
-        print("  \u2139 提示：配置飞书环境变量后重新运行")
+        print("  \u2139 提示：配置飞书环境变量后重新运行此工具")
         print("       export FEISHU_BASE_TOKEN=\"your_base_token\"")
         print("       export FEISHU_TABLE_ID=\"your_table_id\"")
-        print("       \u2192 届时可选择增量上传（仅本次）或全量上传（全部）")
+        print("       \u2192 配置后会自动将本地暂存记录 + 新结果一并上传到飞书")
 
 
 def main():
