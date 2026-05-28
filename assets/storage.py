@@ -1,6 +1,6 @@
 import json
 import os
-from typing import List, Dict
+from typing import List, Dict, Set
 
 PENDING_FILE = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -33,6 +33,15 @@ def count_items() -> int:
 
 def has_items() -> bool:
     return count_items() > 0
+
+
+def owner_repo_keys() -> Set[str]:
+    keys: Set[str] = set()
+    for item in load_items():
+        key = item.get("_owner_repo", "")
+        if key:
+            keys.add(key.lower())
+    return keys
 
 
 def pop_all() -> List[Dict]:

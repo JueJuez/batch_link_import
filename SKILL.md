@@ -53,7 +53,8 @@ python assets/main.py "https://github.com/owner/repo1 还有 https://github.com/
 | `collector.py` | HTTP 采集 README + Stars，社区评分换算 | `from assets.collector import collect_project_data` |
 | `analyzer.py` | LLM Prompt 构建、结果解析、飞书字段映射 | `from assets.analyzer import build_analysis_prompt` |
 | `feishu_writer.py` | 飞书多维表格写入（环境变量配置 Token） | `from assets.feishu_writer import write_record_with_retry` |
-| `tracker.py` | imported.txt 本地清单读写 | `from assets.tracker import load_imported_list` |
+| `storage.py` | 本地待上传记录管理（pending_results.json） | `from assets.storage import append_items, pop_all` |
+| `tracker.py` | imported.txt 已入库清单读写 | `from assets.tracker import load_imported_list` |
 | `reporter.py` | 统计汇总与报告生成 | `from assets.reporter import build_report` |
 | `main.py` | 一体化编排入口 | `python assets/main.py "链接文本"` |
 
@@ -68,7 +69,7 @@ python assets/main.py "https://github.com/owner/repo1 还有 https://github.com/
     ↓
 阶段三：LLM 分析（一次 Prompt）
     ↓
-阶段四：飞书入库 + 更新 imported.txt
+阶段四：飞书入库 / 本地暂存
     ↓
 阶段五：输出汇总报告
 ```
@@ -88,18 +89,18 @@ python assets/main.py "https://github.com/owner/repo1 还有 https://github.com/
    - `A/B.git` 和 `A/B` 视为同一个（基于 `owner/repo` 指纹，大小写不敏感）
    - 同一批次出现多次只保留一次
 
-3. **查本地 `imported.txt` 已入库清单**
-   - 读取 `imported.txt`（每行一个 `owner/repo`）
-   - 文件不存在时视为空清单
-   - 已在清单中的标记"已入库跳过"
-   - 不在清单中的进入阶段二
+3. **查本地已处理清单（双层去重）**
+   - 先查 `imported.txt`（已入库到飞书的项目）→ 标记"已入库跳过"
+   - 再查 `pending_results.json`（本地暂存待上传的项目）→ 标记"待上传跳过"
+   - 都不在清单中的进入阶段二
 
 ```python
-from assets.extractor import extract_github_urls, batch_deduplicate, filter_imported
+from assets.extractor import extract_github_urls, batch_deduplicate, filter_imported, filter_pending
 
 urls = extract_github_urls("https://github.com/owner/repo 还有别的项目")
 deduped = batch_deduplicate(urls)
-new_urls, skipped = filter_imported(deduped)
+new_urls, imported_skipped = filter_imported(deduped)
+new_urls, pending_skipped = filter_pending(new_urls)
 ```
 
 ---
@@ -403,7 +404,7 @@ print(report.generate())
 
 1. **如无需要，不必新增**：每个阶段只做必要操作，不做过度分析
 2. **全量入库**：MCP、Skill、Agent 工具、普通项目全部入库，类型由 LLM 区分
-3. **本地去重**：以 `imported.txt` 为准，不与飞书比对（飞书数据可自由过滤）
+3. **本地去重**：以 `imported.txt` + `pending_results.json` 联合去重，不与飞书比对
 4. **一次 LLM**：所有分析字段在一次 Prompt 中完成，不拆分多次调用
 5. **不 clone**：只用 HTTP 请求拉取公开内容，不 git clone
 6. **本地暂存，配好即传**：未配飞书时追加到 `pending_results.json`，配好后自动全部上传 + 清空本地

@@ -1,6 +1,8 @@
 import re
-from pathlib import Path
 from typing import Set, Tuple, List
+
+from assets.tracker import load_imported_list
+from assets.storage import owner_repo_keys as _owner_repo_keys
 
 GITHUB_URL_PATTERN = re.compile(
     r'https://github\.com/([a-zA-Z0-9._-]+)/([a-zA-Z0-9._-]+?)(?:\.git)?(?=[/\s\)\]>]|$)'
@@ -17,8 +19,6 @@ _NON_REPO_OWNERS = frozenset({
     "login", "signup", "join", "careers", "blog", "support",
     "community", "integrations", "events", "customer-stories",
 })
-
-IMPORTED_FILE = Path(__file__).resolve().parent.parent / "imported.txt"
 
 
 def _normalize(repo: str) -> str:
@@ -73,18 +73,6 @@ def batch_deduplicate(urls: List[str]) -> List[str]:
     return result
 
 
-def load_imported_list() -> Set[str]:
-    if not IMPORTED_FILE.exists():
-        return set()
-    result: Set[str] = set()
-    with open(IMPORTED_FILE, "r", encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if line and not line.startswith("#"):
-                result.add(line.lower())
-    return result
-
-
 def filter_imported(
     urls: List[str],
 ) -> Tuple[List[str], List[str]]:
@@ -94,6 +82,23 @@ def filter_imported(
     for url in urls:
         key = owner_repo_key(url)
         if key in imported:
+            skipped.append(normalize_url(url))
+        else:
+            new_urls.append(normalize_url(url))
+    return new_urls, skipped
+
+
+def filter_pending(
+    urls: List[str],
+) -> Tuple[List[str], List[str]]:
+    pending = _owner_repo_keys()
+    if not pending:
+        return list(urls), []
+    new_urls: List[str] = []
+    skipped: List[str] = []
+    for url in urls:
+        key = owner_repo_key(url)
+        if key in pending:
             skipped.append(normalize_url(url))
         else:
             new_urls.append(normalize_url(url))

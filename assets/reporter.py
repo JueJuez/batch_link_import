@@ -10,6 +10,7 @@ class ReportItem:
     status: str  # "success" | "skipped" | "failed"
     project_type: str = ""
     error_reason: str = ""
+    not_uploaded: bool = False
 
     @property
     def emoji_status(self) -> str:
@@ -22,6 +23,7 @@ class Report:
     skipped_count: int = 0
     success_count: int = 0
     failed_count: int = 0
+    local_count: int = 0
     type_distribution: Dict[str, int] = field(default_factory=lambda: {
         "MCP": 0, "Skill": 0, "Agent工具": 0, "项目": 0,
     })
@@ -38,8 +40,12 @@ class Report:
         lines.append("\U0001f4ca 统计概要")
         lines.append("\u2500" * 35)
         lines.append(f"  总输入条数：      {self.total_input}")
-        lines.append(f"  已入库跳过：       {self.skipped_count}")
-        lines.append(f"  成功入库数：       {self.success_count}")
+        if self.skipped_count > 0:
+            lines.append(f"  已入库跳过：       {self.skipped_count}")
+        if self.success_count > 0:
+            lines.append(f"  成功入库数：       {self.success_count}")
+        if self.local_count > 0:
+            lines.append(f"  本地暂存数：       {self.local_count}")
         lines.append(f"  失败条数：         {self.failed_count}")
         lines.append("")
         lines.append("\U0001f4cb 按类型分布")
@@ -57,6 +63,9 @@ class Report:
             lines.append("")
         lines.append("\u2705 入库完成")
         lines.append("\u2500" * 35)
+        if self.local_count > 0:
+            lines.append("  评估结果已保存到 pending_results.json")
+            lines.append(f"  共 {self.local_count} 条记录待上传到飞书")
         if self.feishu_base_url:
             lines.append(f"  飞书表格地址：{self.feishu_base_url}")
         lines.append(f"  评估日期：{self.evaluation_date}")
@@ -73,7 +82,10 @@ def build_report(
         if item.status == "skipped":
             report.skipped_count += 1
         elif item.status == "success":
-            report.success_count += 1
+            if item.not_uploaded:
+                report.local_count += 1
+            else:
+                report.success_count += 1
             if item.project_type in report.type_distribution:
                 report.type_distribution[item.project_type] += 1
         elif item.status == "failed":

@@ -20,15 +20,18 @@ def phase1_extract(text: str):
     urls = ext.extract_github_urls(text)
     if not urls:
         print("未发现有效的 GitHub 仓库链接")
-        return [], []
+        return [], [], [], []
     deduped = ext.batch_deduplicate(urls)
-    new_urls, skipped = ext.filter_imported(deduped)
+    new_urls, imported_skipped = ext.filter_imported(deduped)
+    new_urls, pending_skipped = ext.filter_pending(new_urls)
     print(f"\U0001f4e5 阶段一：链接提取完成")
     print(f"  提取到 {len(urls)} 个链接，去重后 {len(deduped)} 个")
-    print(f"  新项目：{len(new_urls)} 个，已入库跳过：{len(skipped)} 个")
-    for url in skipped:
-        print(f"    \u23ed {url}")
-    return new_urls, skipped
+    print(f"  新项目：{len(new_urls)} 个，已入库跳过：{len(imported_skipped)} 个，待上传跳过：{len(pending_skipped)} 个")
+    for url in imported_skipped:
+        print(f"    \u23ed 已入库 {url}")
+    for url in pending_skipped:
+        print(f"    \u23ed 待上传 {url}")
+    return new_urls, imported_skipped, pending_skipped
 
 
 def phase2_collect(url: str):
@@ -68,8 +71,9 @@ def phase4_feishu_or_local(completed_items: list, failed_items: list) -> dict:
         print(f"\n\U0001f4e6 阶段四：未检测到飞书配置，本地暂存")
         for url, owner_repo, stars, readme in completed_items:
             print(f"  \U0001f4e5 暂存 [{owner_repo}]")
-            all_items.append(rp.ReportItem(url, owner_repo, "skipped",
-                                           error_reason="本地暂存（未上传）"))
+            all_items.append(rp.ReportItem(url, owner_repo, "success",
+                                           error_reason="本地暂存（未上传）",
+                                           not_uploaded=True))
         local_saved = True
     else:
         print(f"\n\U0001f4e5 阶段四：已检测到飞书配置")
@@ -110,11 +114,11 @@ def main():
     print("  Batch Link Import - 批量导入工具")
     print("=" * 50)
 
-    new_urls, skipped = phase1_extract(input_text)
+    new_urls, imported_skipped, pending_skipped = phase1_extract(input_text)
 
     if not new_urls:
         print("\n无新项目需要处理。")
-        report = _build_empty_report(skipped)
+        report = _build_empty_report(imported_skipped, pending_skipped)
         print(report.generate())
         return 0
 
@@ -140,13 +144,17 @@ def main():
     return 0
 
 
-def _build_empty_report(skipped):
+def _build_empty_report(imported_skipped, pending_skipped):
     rp = _import_module("assets.reporter")
     items = []
-    for url in skipped:
+    for url in imported_skipped:
         ext = _import_module("assets.extractor")
         key = ext.owner_repo_key(url)
-        items.append(rp.ReportItem(url, key, "skipped"))
+        items.append(rp.ReportItem(url, key, "skipped", error_reason="已入库"))
+    for url in pending_skipped:
+        ext = _import_module("assets.extractor")
+        key = ext.owner_repo_key(url)
+        items.append(rp.ReportItem(url, key, "skipped", error_reason="待上传（本地暂存）"))
     return rp.build_report(items)
 
 
