@@ -191,30 +191,101 @@ Stars 数量: {stars}
 
 ---
 
-## 阶段四：飞书入库 + 本地清单更新
+## 阶段四：飞书入库 / 本地暂存
 
-### 飞书配置
+### 第一步：检查飞书配置
 
-配置方式一：设置环境变量
+```python
+from assets.feishu_writer import is_feishu_configured
 
-```bash
-export FEISHU_BASE_TOKEN="your_base_token"
-export FEISHU_TABLE_ID="your_table_id"
+has_feishu = is_feishu_configured()
 ```
 
-配置方式二：在代码中传入参数
+根据检查结果走不同分支：
+
+---
+
+### 场景 A：已配置飞书环境变量 → 上传到飞书
+
+#### A1. 检查是否有本地待上传记录
+
+执行本阶段前，先检查 `pending_results.json` 是否有之前未上传的记录：
+
+```python
+from assets.storage import has_pending, pending_sessions_info
+
+if has_pending():
+    info = pending_sessions_info()
+    # 例：[{"session_id":"20260527_143022","created_at":"...","count":3}]
+```
+
+如果有待上传记录，**询问用户**如何处理（提供三个选项）：
+
+```
+检测到 {N} 条本地待上传记录（来自 {M} 次之前的评估），如何处理？
+
+[a] 仅上传本次分析结果（增量上传）
+    → 只将当前这次评估的结果写入飞书
+
+[b] 上传所有待上传记录（全量上传）
+    → 将本地所有未上传的记录 + 本次结果一并写入飞书
+
+[c] 跳过本地记录，仅上传本次
+    → 忽略本地已有记录，只上传当前这次的结果
+```
+
+根据用户选择：
+
+- **[a] 增量上传** → `load_latest_session()` 获取最近的待上传记录 + 本次结果一起传
+- **[b] 全量上传** → `load_all_pending()` 获取所有待上传记录 + 本次结果一起传
+- **[c] 跳过本地** → 仅处理本次结果，本地待上传记录保留不动
+
+> **默认选项**：如果用户未明确选择，默认执行 **[a] 增量上传**。
+
+```python
+from assets.storage import load_latest_session, load_all_pending, mark_session_uploaded, mark_all_uploaded
+
+if choice == "a":
+    local_items = load_latest_session()
+    # 上传 local_items + 本次结果
+elif choice == "b":
+    local_items = load_all_pending()
+    # 上传 local_items + 本次结果
+else:
+    local_items = []
+    # 仅上传本次结果
+```
+
+如果没有待上传记录，直接进入 A2。
+
+#### A2. 写入飞书多维表格
+
+对每条记录调用飞书写入：
 
 ```python
 from assets.feishu_writer import write_record_with_retry
+from assets.tracker import append_to_imported_list
 
-write_record_with_retry(
-    fields={"项目名称": "xxx", ...},
-    base_token="your_base_token",
-    table_id="your_table_id"
-)
+fields = result.to_feishu_fields(repo_name, git_url, stars)
+ok = write_record_with_retry(fields)
+if ok:
+    append_to_imported_list(f"{owner}/{repo}")
 ```
 
-### 字段映射
+#### A3. 清理已上传的本地记录
+
+```python
+if choice == "a":
+    # 标记本次 session 为已上传
+    from assets.storage import mark_session_uploaded
+    mark_session_uploaded(session_id)
+elif choice == "b":
+    # 标记所有为已上传
+    from assets.storage import mark_all_uploaded
+    total = mark_all_uploaded()
+```
+
+#### 字段映射
 
 | 飞书字段 | 值来源 |
 |---------|-------|
@@ -234,29 +305,60 @@ write_record_with_retry(
 | `评估日期` | 当前日期 |
 | `状态` | 固定为"已入库" |
 
-### 飞书写入命令
-
-```bash
-export FEISHU_BASE_TOKEN="your_base_token"
-export FEISHU_TABLE_ID="your_table_id"
-
-lark-cli base +create-record $FEISHU_BASE_TOKEN $FEISHU_TABLE_ID \
-  --fields '{"项目名称":"...", "Git 地址":{"link":"https://..."}, ...}'
-```
-
-### 错误处理
+#### 错误处理
 - 单条失败不中断，继续处理下一条
 - 最多重试 3 次，间隔 1s
 - 记录失败原因
 
-### 本地清单更新
+---
 
-写入飞书成功后立即追加到 `imported.txt`：
+### 场景 B：未配置飞书环境变量 → 本地暂存
+
+#### B1. 保存本次分析结果到本地
 
 ```python
-from assets.tracker import append_to_imported_list
-append_to_imported_list("owner/repo")
+from assets.storage import save_session_results
+
+# 构建本次所有分析结果的 feishu_fields 列表
+pending_items = []
+for (url, owner_repo, stars, readme) in session_results:
+    ext = __import__("assets.extractor", fromlist=[""])
+    an = __import__("assets.analyzer", fromlist=[""])
+    owner, repo = ext.parse_owner_repo(url)
+
+    # 注意：这里假设 LLM 分析结果已通过 parse_llm_response() 解析为 AnalysisResult
+    # result 是 AnalysisResult 实例
+    fields = result.to_feishu_fields(repo, url, stars)
+    fields["_owner_repo"] = owner_repo  # 用于后续写入 imported.txt
+    pending_items.append(fields)
+
+session_id = save_session_results(pending_items)
 ```
+
+#### B2. 输出配置提示
+
+向用户输出以下格式的提示：
+
+```
+═══════════════════════════════════════════════
+  ⚠️  未检测到飞书环境变量
+
+  本次评估结果已保存到本地（共 N 条）。
+  本地暂存文件：pending_results.json
+
+  如需上传到飞书多维表格，请先配置：
+
+    export FEISHU_BASE_TOKEN="your_base_token"
+    export FEISHU_TABLE_ID="your_table_id"
+
+  配置后重新运行此 skill 将自动提示上传。
+  届时可选择「增量上传」（仅本次）或「全量上传」（全部）。
+═══════════════════════════════════════════════
+```
+
+#### B3. 跳过飞书入库，进入阶段五
+
+注意即使跳过飞书入库，阶段五的汇总报告仍要正常输出，报告中注明"本地暂存（未上传）"状态。
 
 ---
 
@@ -274,7 +376,9 @@ report = build_report(items, feishu_base_url="your_feishu_url")
 print(report.generate())
 ```
 
-输出示例：
+报告分两种场景输出：
+
+### 场景 A：已上传到飞书
 
 ```
 ==================================================
@@ -299,7 +403,42 @@ print(report.generate())
 
 ✅ 入库完成
 ───────────────────────────────────
+  飞书表格地址：[链接]
   评估日期：2026-05-27
+```
+
+### 场景 B：本地暂存（未配飞书）
+
+```
+==================================================
+  MCP/Skill 项目评估归档 — 汇总报告
+==================================================
+
+📊 统计概要
+───────────────────────────────────
+  总输入条数：      6
+  已入库跳过：       2
+  本地暂存数：       3
+  失败条数：         1
+
+📋 按类型分布
+───────────────────────────────────
+  MCP：              2 个
+  Skill：            1 个
+
+❌ 失败明细
+───────────────────────────────────
+  [https://github.com/xxx/yyy] → 原因：仓库不存在
+
+📦 本地暂存
+───────────────────────────────────
+  评估结果已保存到 pending_results.json
+  共 3 条记录待上传到飞书
+  评估日期：2026-05-27
+
+💡 提示：配置飞书环境变量后重新运行，可选择上传。
+    export FEISHU_BASE_TOKEN="your_base_token"
+    export FEISHU_TABLE_ID="your_table_id"
 ```
 
 ---
@@ -322,3 +461,4 @@ print(report.generate())
 3. **本地去重**：以 `imported.txt` 为准，不与飞书比对（飞书数据可自由过滤）
 4. **一次 LLM**：所有分析字段在一次 Prompt 中完成，不拆分多次调用
 5. **不 clone**：只用 HTTP 请求拉取公开内容，不 git clone
+6. **本地暂存，按需上传**：未配飞书时保存到 `pending_results.json`，配好后可选择增量（仅本次）或全量（全部）上传

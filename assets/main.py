@@ -55,6 +55,57 @@ def phase3_analyze(repo_name: str, readme: str, stars: int):
     return prompt
 
 
+def phase4_feishu_or_local(completed_items: list, failed_items: list) -> dict:
+    fw = _import_module("assets.feishu_writer")
+    st = _import_module("assets.storage")
+    rp = _import_module("assets.reporter")
+    ext = _import_module("assets.extractor")
+
+    has_feishu = fw.is_feishu_configured()
+    all_items = []
+    local_saved = False
+
+    if not has_feishu:
+        print(f"\n\U0001f4e6 阶段四：未检测到飞书配置，本地暂存")
+        pending_items = []
+        for url, owner_repo, stars, readme in completed_items:
+            print(f"  \U0001f4e5 本地暂存 [{owner_repo}]")
+            all_items.append(rp.ReportItem(url, owner_repo, "success"))
+        print(f"  \u2705 共 {len(completed_items)} 条结果已准备暂存")
+
+        local_skipped = []
+        for url, owner_repo, _, _ in completed_items:
+            owner, repo = ext.parse_owner_repo(url)
+            local_skipped.append(rp.ReportItem(url, owner_repo, "skipped",
+                                               error_reason="本地暂存（未上传）"))
+
+        local_saved = True
+        all_items = local_skipped
+    else:
+        print(f"\n\U0001f4e5 阶段四：已检测到飞书配置")
+        for url, owner_repo, stars, readme in completed_items:
+            print(f"  \u2705 可上传 [{owner_repo}]")
+            all_items.append(rp.ReportItem(url, owner_repo, "success"))
+
+    for url, owner_repo, error in failed_items:
+        all_items.append(rp.ReportItem(url, owner_repo, "failed",
+                                       error_reason=error))
+
+    return {"items": all_items, "local_saved": local_saved}
+
+
+def phase5_report(report_data: dict):
+    rp = _import_module("assets.reporter")
+    report = rp.build_report(report_data["items"])
+    print("\n" + report.generate())
+    if report_data["local_saved"]:
+        print()
+        print("  \u2139 提示：配置飞书环境变量后重新运行")
+        print("       export FEISHU_BASE_TOKEN=\"your_base_token\"")
+        print("       export FEISHU_TABLE_ID=\"your_table_id\"")
+        print("       \u2192 届时可选择增量上传（仅本次）或全量上传（全部）")
+
+
 def main():
     if len(sys.argv) < 2:
         print("用法: python assets/main.py \"https://github.com/owner/repo ...\"")
@@ -88,7 +139,11 @@ def main():
         phase3_analyze(repo, readme, stars)
         completed.append((url, f"{owner}/{repo}", stars, readme))
 
-    print(f"\n\U0001f4ca 处理完成：{len(completed)} 个成功，{len(failed)} 个失败")
+    print(f"\n\U0001f4ca 采集完成：{len(completed)} 个成功，{len(failed)} 个失败")
+
+    report_data = phase4_feishu_or_local(completed, failed)
+    phase5_report(report_data)
+
     return 0
 
 

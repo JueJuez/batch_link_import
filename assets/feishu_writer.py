@@ -82,6 +82,12 @@ def write_record_with_retry(
     return False
 
 
+def is_feishu_configured() -> bool:
+    return bool(os.environ.get("FEISHU_BASE_TOKEN")) and bool(
+        os.environ.get("FEISHU_TABLE_ID")
+    )
+
+
 def check_lark_cli_available() -> bool:
     result = _run_lark_cli(["--version"])
     return result is not None
