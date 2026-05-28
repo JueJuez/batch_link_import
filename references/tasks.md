@@ -287,6 +287,43 @@ batch-link-import/
 
 ---
 
+---
+
+## 阶段 5：优化与重构 ✅
+
+### 任务 5.1：本地暂存 + 增量上传机制 ✅
+
+**描述**：未配置飞书环境变量时，评估结果暂存到本地 `pending_results.json`，配置后自动全部上传。
+
+**子步骤**：
+1. 创建 `assets/storage.py` — 本地暂存读写管理
+2. `feishu_writer.py` 新增 `is_feishu_configured()` — 检测环境变量
+3. 更新 SKILL.md 阶段四 — 分场景 A（已配飞书→上传）和场景 B（未配飞书→本地暂存）
+4. 更新 `main.py` — 编排阶段四/五，自动检测飞书配置走对应分支
+
+**验收条件**：
+- ✅ 未配飞书时结果自动追加到 `pending_results.json`，提示配置
+- ✅ 已配飞书时先上传本地暂存记录，再传本次新结果
+- ✅ 上传成功后清空本地暂存，写入 `imported.txt`
+
+---
+
+### 任务 5.2：消除 imported.txt 和 pending_results.json 功能重叠 ✅
+
+**描述**：优化全流程去重逻辑，两个文件职责分明、互补，消除冗余。
+
+**子步骤**：
+1. 删除 `extractor.py` 中重复的 `IMPORTED_FILE` / `load_imported_list()`（复用 tracker.py）
+2. `storage.py` 新增 `owner_repo_keys()` — 提取暂存记录的 owner/repo 集合
+3. `extractor.py` 新增 `filter_pending()` — 阶段一也检查 pending_results.json
+4. `reporter.py` 新增 `local_count` / `not_uploaded` — 本地暂存独立统计
+5. 更新 `main.py` 阶段一 — 三层去重（批次内 → imported → pending）
+
+**验收条件**：
+- ✅ `extractor.py` 不再定义 `IMPORTED_FILE`，从 `tracker.py` 导入
+- ✅ 阶段一同时查 `imported.txt` 和 `pending_results.json`
+- ✅ 报告区分"已入库跳过"、"待上传跳过"和"成功入库"
+
 ## 依赖关系图
 
 ```
@@ -323,6 +360,8 @@ batch-link-import/
 | 3.2 | 报告生成 | 3.1 | P0 | ✅ |
 | 4.1 | 端到端流程验证 | 全部 | P0 | ✅ |
 | 4.2 | 边界条件验证 | 4.1 | P1 | ✅ |
+| 5.1 | 本地暂存 + 增量上传机制 | 2.1 | P1 | ✅ |
+| 5.2 | 消除 imported.txt 和 pending_results.json 功能重叠 | 5.1 | P1 | ✅ |
 
 ---
 
