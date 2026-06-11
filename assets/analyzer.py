@@ -33,20 +33,20 @@ class AnalysisResult:
         total_score = community_score + self.doc_score + self.func_score
         return {
             "项目名称": repo_name,
-            "Git 地址": {"link": git_url},
-            "项目类型": self.project_type,
             "项目描述": self.summary,
+            "能力标签": ", ".join(self.tags) if self.tags else "",
+            "Git 地址": git_url,
+            "文档评分": self.doc_score,
+            "综合评分": total_score,
+            "状态": "已入库",
             "运行形式": self.run_form,
-            "给谁用": self.target_user,
             "功能领域": self.domain,
-            "能力标签": self.tags,
+            "功能评分": self.func_score,
+            "项目类型": self.project_type,
+            "给谁用": self.target_user,
             "核心亮点": self.highlights,
             "社区评分": community_score,
-            "文档评分": self.doc_score,
-            "功能评分": self.func_score,
-            "综合评分": total_score,
             "评估日期": __import__("datetime").date.today().isoformat(),
-            "状态": "已入库",
         }
 
 

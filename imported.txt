@@ -1,1 +1,21 @@
 # 每行一个 owner/repo，已成功入库的项目
+hg-ha/mtools
+leonxlnx/taste-skill
+nvidia/cosmos
+open-llm-vtuber/open-llm-vtuber
+pdfcrafttool/pdfcraft
+pwmh4/dualsensex-steam-pc-controller
+paddlepaddle/paddleocr
+alchaincyf/huashu-design
+anthropics/knowledge-work-plugins
+byoungd/english-level-up-tips
+chopratejas/headroom
+github/spec-kit
+hardikpandya/stop-slop
+harry0703/moneyprinterturbo
+nexu-io/open-design
+phuryn/pm-skills
+rohitg00/ai-engineering-from-scratch
+rpamis/comet
+wwtlitee/natural-chinese-copy-core
+yuzhworkhard-wq/image-to-code

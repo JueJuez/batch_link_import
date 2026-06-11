@@ -52,11 +52,11 @@ def write_record(
         return False
     args = [
         "base",
-        "+create-record",
-        base_token,
-        table_id,
-        "--fields",
-        json.dumps(fields, ensure_ascii=False),
+        "+record-upsert",
+        "--as", "user",
+        "--base-token", base_token,
+        "--table-id", table_id,
+        "--json", json.dumps(fields, ensure_ascii=False),
     ]
     result = _run_lark_cli(args)
     if result and (result.get("ok") or result.get("code") == 0):
