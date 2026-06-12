@@ -41,3 +41,7 @@ wwtlitee/natural-chinese-copy-core
 yuzhworkhard-wq/image-to-code
 hugohe3/ppt-master
 zarazhangrui/frontend-slides
+panniantong/agent-reach
+firecrawl/firecrawl
+unclecode/crawl4ai
+virgiliojr94/book-to-skill
