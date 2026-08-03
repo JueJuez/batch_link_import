@@ -248,23 +248,29 @@ Stars 数量: {stars}
 
 ```
 batch-link-import/
-├── SKILL.md                 # AI Agent 执行指令（触发规则 + 流程控制）
-├── pyproject.toml           # Python 项目配置
-├── imported.txt             # 已入库项目清单（自动维护，只增不减）
-├── pending_results.json     # 待上传暂存记录（自动维护，上传即清）
-├── references/
-│   ├── spec.md              # 技术规格说明书
-│   └── tasks.md             # 开发任务记录
-└── assets/                  # Python 辅助脚本
-    ├── extractor.py         # 链接提取 + 标准化 + 本地去重
-    ├── collector.py         # 数据采集（README + GitHub API Stars）
-    ├── analyzer.py          # LLM Prompt 模板 + 分析结果数据模型
-    ├── feishu_writer.py     # 飞书多维表格写入
-    ├── storage.py           # 本地待上传记录管理（pending_results.json）
-    ├── tracker.py           # imported.txt 已入库清单维护
-    ├── reporter.py          # 统计汇总与报告生成
-    └── main.py              # 一体化编排入口
+├── SKILL.md                    # AI Agent 执行指令（触发规则 + 流程控制）
+├── README.md                   # 项目说明（本文）
+├── pyproject.toml              # Python 项目配置
+├── .env.example                # 环境变量模板（复制为 .env 填写自己的配置）
+├── .gitignore
+├── feishu_fields.example.json  # 飞书字段映射模板（复制为 feishu_fields.json 填自己的 field id）
+├── assets/                     # Python 辅助脚本（核心逻辑）
+│   ├── extractor.py            # 链接提取 + 标准化 + 本地去重（GitHub / Gitee）
+│   ├── collector.py            # 数据采集（README + Stars，GitHub / Gitee）
+│   ├── analyzer.py             # LLM Prompt 模板 + 分析字段校验纠偏
+│   ├── llm_client.py           # LLM 分析（子代理/Api 回退，已移除交互模式）
+│   ├── feishu_writer.py        # 飞书多维表格写入（Wiki 链接 / 裸 token 自动辨别）
+│   ├── storage.py              # 本地待上传记录管理（pending_results.json）
+│   ├── tracker.py              # imported.txt 已入库清单维护
+│   ├── reporter.py             # 统计汇总与报告生成
+│   ├── pipeline.py             # 子代理工作流（collect / prompts / upload 子命令）
+│   └── main.py                 # 一体化编排入口（并发采集+分析 → 入库）
+└── tests/
+    └── test_core.py            # 单元测试
 ```
+
+> 注：`imported.txt`、`pending_results.json`、`feishu_fields.json`、`.env`、`debug.log`
+> 均为本地运行产物，已被 `.gitignore` 忽略，不进版本库。
 
 ## How It Works
 
