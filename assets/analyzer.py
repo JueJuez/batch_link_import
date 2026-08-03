@@ -15,6 +15,27 @@ DOMAINS = [
     "数据分析与可视化", "AI 模型交互/编排", "通用工具", "其他",
 ]
 
+# 逻辑字段 -> 飞书字段键（field id 或列名，取决于你的 lark-cli 版本）
+# 具体映射在 assets/feishu_writer.py 的 load_field_map() 中加载，可被
+# 项目根目录的 feishu_fields.json 或环境变量 FEISHU_FIELD_MAP 覆盖。
+LOGICAL_FIELDS = [
+    "project_name",   # 项目名称
+    "summary",        # 项目描述
+    "tags",           # 能力标签
+    "git_url",        # Git 地址
+    "project_type",   # 项目类型
+    "run_form",       # 运行形式
+    "target_user",    # 给谁用
+    "domain",         # 功能领域
+    "highlights",     # 核心亮点
+    "community_score",# 社区评分
+    "doc_score",      # 文档评分
+    "func_score",     # 功能评分
+    "total_score",    # 综合评分
+    "eval_date",      # 评估日期
+    "status",         # 状态
+]
+
 
 @dataclass
 class AnalysisResult:
@@ -28,29 +49,49 @@ class AnalysisResult:
     doc_score: int = 0
     func_score: int = 0
 
-    def to_feishu_fields(self, repo_name: str, git_url: str, stars: int) -> dict:
+    def to_feishu_fields(
+        self, repo_name: str, git_url: str, stars: int, field_map: dict = None
+    ) -> dict:
+        """把分析结果转成飞书字段字典。
+
+        field_map: 逻辑字段名 -> 飞书字段键（id 或列名）。
+        映射为 None / 空字符串的字段会被跳过（不会写入飞书），
+        这样尚未在你表格里建好对应列时也不会报错。
+        """
+        from assets.feishu_writer import load_field_map
+
+        m = field_map or load_field_map()
         community_score = stars_to_score(stars)
         total_score = community_score + self.doc_score + self.func_score
-        return {
-            "项目名称": repo_name,
-            "项目描述": self.summary,
-            "能力标签": ", ".join(self.tags) if self.tags else "",
-            "Git 地址": git_url,
-            "文档评分": self.doc_score,
-            "综合评分": total_score,
-            "状态": "已入库",
-            "运行形式": self.run_form,
-            "功能领域": self.domain,
-            "功能评分": self.func_score,
-            "项目类型": self.project_type,
-            "给谁用": self.target_user,
-            "核心亮点": self.highlights,
-            "社区评分": community_score,
-            "评估日期": __import__("datetime").date.today().isoformat(),
+        date_str = __import__("datetime").datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        values = {
+            "project_name": repo_name,
+            "summary": self.summary,
+            "tags": ", ".join(self.tags) if self.tags else "",
+            "git_url": git_url,
+            "project_type": self.project_type,
+            "run_form": self.run_form,
+            "target_user": self.target_user,
+            "domain": self.domain,
+            "highlights": self.highlights,
+            "community_score": community_score,
+            "doc_score": self.doc_score,
+            "func_score": self.func_score,
+            "total_score": total_score,
+            "eval_date": date_str,
+            "status": "已入库",
         }
 
+        out = {}
+        for logical, value in values.items():
+            key = m.get(logical)
+            if key:  # 仅写入已配置的字段
+                out[key] = value
+        return out
 
-ANALYSIS_PROMPT = """你是一个专业的开源项目评估分析师。请根据以下 GitHub 项目的 README 内容和 Stars 数量，完成一次全面的项目评估分析。
+
+ANALYSIS_PROMPT = """你是一个专业的开源项目评估分析师。请根据以下开源项目（可能来自 GitHub 或 Gitee）的 README 内容和 Stars 数量，完成一次全面的项目评估分析。
 
 ## 项目信息
 
@@ -103,7 +144,29 @@ Stars 数量: {stars}
 """
 
 
+def coerce_choice(value, allowed, default: str = "") -> str:
+    """把 LLM 返回的选项值纠偏到允许集合内。
+
+    先精确匹配；再大小写不敏感匹配；再包含匹配（容错 "MCP Server" / "mcp" 等）；
+    都不中则返回 default，避免写出飞书单选列不存在的选项导致写入失败。
+    """
+    if value is None:
+        return default
+    v = str(value).strip()
+    if v in allowed:
+        return v
+    vl = v.lower()
+    for a in allowed:
+        if a.lower() == vl:
+            return a
+        if vl and (vl in a.lower() or a.lower() in vl):
+            return a
+    return default
+
+
 def parse_llm_response(response: str) -> Optional[AnalysisResult]:
+    if not response:
+        return None
     cleaned = response.strip()
     if cleaned.startswith("```"):
         cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned)
@@ -112,13 +175,19 @@ def parse_llm_response(response: str) -> Optional[AnalysisResult]:
         data = json.loads(cleaned)
     except json.JSONDecodeError:
         return None
+    if not isinstance(data, dict):
+        return None
     try:
         result = AnalysisResult(
             summary=str(data.get("summary", "")),
-            project_type=str(data.get("project_type", "")),
-            run_form=str(data.get("run_form", "")),
-            target_user=str(data.get("target_user", "")),
-            domain=str(data.get("domain", "")),
+            project_type=coerce_choice(
+                data.get("project_type", ""), PROJECT_TYPES, default="项目"),
+            run_form=coerce_choice(
+                data.get("run_form", ""), RUN_FORMS, default="不适用"),
+            target_user=coerce_choice(
+                data.get("target_user", ""), USER_TYPES, default="两者皆可"),
+            domain=coerce_choice(
+                data.get("domain", ""), DOMAINS, default="其他"),
             tags=list(data.get("tags", [])),
             highlights=str(data.get("highlights", "")),
             doc_score=int(data.get("doc_score", 0)),
